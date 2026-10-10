@@ -80,4 +80,69 @@ Jan 15 22:30:12 mailserver sendmail[12421]: MNO12345: to=<vip1@premium.com>, del
 Jan 15 22:30:13 mailserver sendmail[12422]: MNO12345: to=<vip2@premium.com>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, pri=142528, relay=mx.premium.com [203.0.113.180], dsn=2.0.0, stat=Sent
 Jan 15 22:30:14 mailserver sendmail[12423]: MNO12345: to=<vip3@premium.com>, delay=00:00:02, xdelay=00:00:02, mailer=esmtp, pri=142528, relay=mx.premium.com [203.0.113.180], dsn=2.0.0, stat=Sent
 Jan 15 23:00:33 mailserver sendmail[12424]: PQR23456: from=<devops@example.com>, size=1792, class=0, nrcpts=1, msgid=<202401152300.pqr2@example.com>, proto=ESMTP, daemon=MTA, relay=localhost [127.0.0.1]
-Jan 15 23:00:35 mailserver sendmail[12425]: PQR23456: to=<oncall@pagerduty.com>, delay=00:00:02, xdelay=00:00:02, mailer=esmtp, pri=121792, relay=mx.pagerduty.com [198.51.100.100], dsn=2.0.0, stat=Sent`;
+Jan 15 23:00:35 mailserver sendmail[12425]: PQR23456: to=<oncall@pagerduty.com>, delay=00:00:02, xdelay=00:00:02, mailer=esmtp, pri=121792, relay=mx.pagerduty.com [198.51.100.100], dsn=2.0.0, stat=Sent
+Jan 15 08:01:20 mailserver sm-mta[12300]: ABC12345: DKIM: PASS d=example.com s=mail
+Jan 15 08:05:10 mailserver sm-mta[12301]: DEF23456: DKIM: PASS d=example.com s=mail
+Jan 15 08:15:30 mailserver sm-mta[12302]: GHI34567: DKIM: FAIL d=shop.example.com s=selector1
+Jan 15 09:01:43 mailserver sm-mta[12303]: JKL45678: DKIM: PASS d=example.com s=mail
+Jan 15 09:30:20 mailserver sm-mta[12304]: MNO56789: DKIM: PASS d=example.com s=mail
+Jan 15 10:00:10 mailserver sm-mta[12305]: PQR67890: DKIM: PASS d=monitoring.example.com s=alert
+Jan 15 10:15:32 mailserver sm-mta[12306]: STU78901: DKIM: PASS d=example.com s=marketing
+Jan 15 10:15:35 mailserver sm-mta[12307]: STU78901: DKIM verification fail for domain bigcorp.net
+Jan 15 11:00:04 mailserver sm-mta[12308]: VWX89012: DKIM: PASS d=example.com s=mail
+Jan 15 11:30:18 mailserver sm-mta[12309]: YZA90123: DKIM: FAIL d=shop.example.com s=selector1
+Jan 15 12:00:44 mailserver sm-mta[12310]: BCD01234: DKIM: PASS d=example.com s=mail
+Jan 15 12:45:10 mailserver sm-mta[12311]: EFG12345: DKIM: NEUTRAL d=supplier.cn s=default
+Jan 15 13:00:29 mailserver sm-mta[12312]: HIJ23456: DKIM: PASS d=example.com s=internal
+Jan 15 13:30:14 mailserver sm-mta[12313]: KLM34567: DKIM: PASS d=example.com s=newsletter
+Jan 15 14:00:21 mailserver sm-mta[12314]: NOP45678: DKIM: PASS d=example.com s=billing
+Jan 15 14:30:54 mailserver sm-mta[12315]: QRS56789: DKIM: PASS d=example.com s=mail
+Jan 15 15:00:10 mailserver sm-mta[12316]: TUV67890: DKIM: PASS d=shop.example.com s=selector1
+Jan 15 15:30:39 mailserver sm-mta[12317]: WXY78901: DKIM: PASS d=example.com s=devops
+Jan 15 16:00:04 mailserver sm-mta[12318]: ZAB89012: DKIM: PERMERROR d=remote-server.com s=default
+Jan 15 16:30:17 mailserver sm-mta[12319]: CDE90123: DKIM: PASS d=example.com s=marketing
+Jan 15 17:00:32 mailserver sm-mta[12320]: FGH01234: DKIM: PASS d=example.com s=mail
+Jan 15 17:30:11 mailserver sm-mta[12321]: IJK12345: DKIM: PASS d=example.com s=newsletter
+Jan 15 18:00:44 mailserver sm-mta[12322]: LMN23456: DKIM: FAIL d=shop.example.com s=selector1
+Jan 15 18:30:21 mailserver sm-mta[12323]: OPQ34567: DKIM: PASS d=example.com s=mail
+Jan 15 19:00:14 mailserver sm-mta[12324]: RST45678: DKIM: PASS d=example.com s=security
+Jan 15 19:30:39 mailserver sm-mta[12325]: UVW56789: DKIM: TEMPERROR d=slow-server.net s=default
+Jan 15 20:00:09 mailserver sm-mta[12326]: XYZ67890: DKIM: PASS d=example.com s=hr
+Jan 15 20:30:54 mailserver sm-mta[12327]: ABC78901: DKIM: PASS d=example.com s=billing
+Jan 15 21:00:21 mailserver sm-mta[12328]: DEF89012: DKIM: PASS d=example.com s=mail
+Jan 15 21:30:17 mailserver sm-mta[12329]: GHI90123: DKIM: FAIL d=shop.example.com s=selector1
+Jan 15 22:00:44 mailserver sm-mta[12330]: JKL01234: DKIM: PASS d=example.com s=internal
+Jan 15 22:30:09 mailserver sm-mta[12331]: MNO12345: DKIM: PASS d=example.com s=marketing
+Jan 15 23:00:32 mailserver sm-mta[12332]: PQR23456: DKIM: PASS d=example.com s=devops
+Jan 15 08:01:22 mailserver sm-mta[12340]: connect from unknown.external.com [203.0.113.55]
+Jan 15 08:05:11 mailserver sm-mta[12341]: connect from relay.partner.com [198.51.100.30]
+Jan 15 08:15:29 mailserver sm-mta[12342]: connect from suspicious.spammer.net [45.33.32.156]
+Jan 15 09:01:44 mailserver sm-mta[12343]: connect from localhost [127.0.0.1]
+Jan 15 09:30:21 mailserver sm-mta[12344]: connect from internal.app.local [10.0.0.15]
+Jan 15 10:00:09 mailserver sm-mta[12345]: connect from monitor.internal [10.0.0.20]
+Jan 15 10:15:31 mailserver sm-mta[12346]: connect from bulk.sender.com [104.18.32.7]
+Jan 15 11:00:03 mailserver sm-mta[12347]: connect from localhost [127.0.0.1]
+Jan 15 11:30:17 mailserver sm-mta[12348]: connect from suspicious.spammer.net [45.33.32.156]
+Jan 15 12:00:43 mailserver sm-mta[12349]: connect from hr-client.corp.local [192.168.1.50]
+Jan 15 12:45:09 mailserver sm-mta[12350]: connect from vendor.external.net [185.220.101.33]
+Jan 15 13:00:28 mailserver sm-mta[12351]: connect from localhost [127.0.0.1]
+Jan 15 13:30:13 mailserver sm-mta[12352]: connect from newsletter.service.com [151.101.1.140]
+Jan 15 14:00:20 mailserver sm-mta[12353]: connect from billing.internal [192.168.1.100]
+Jan 15 14:30:53 mailserver sm-mta[12354]: connect from partner.api.com [198.51.100.200]
+Jan 15 15:00:09 mailserver sm-mta[12355]: connect from shop.internal [10.0.0.25]
+Jan 15 15:30:38 mailserver sm-mta[12356]: connect from devops.internal [10.0.0.30]
+Jan 15 16:00:03 mailserver sm-mta[12357]: connect from unknown.external.com [203.0.113.55]
+Jan 15 16:30:16 mailserver sm-mta[12358]: connect from marketing.service.com [104.18.32.7]
+Jan 15 17:00:31 mailserver sm-mta[12359]: connect from localhost [127.0.0.1]
+Jan 15 17:30:10 mailserver sm-mta[12360]: connect from newsletter.service.com [151.101.1.140]
+Jan 15 18:00:43 mailserver sm-mta[12361]: connect from suspicious.spammer.net [45.33.32.156]
+Jan 15 18:30:20 mailserver sm-mta[12362]: connect from localhost [127.0.0.1]
+Jan 15 19:00:13 mailserver sm-mta[12363]: connect from security.internal [10.0.0.35]
+Jan 15 19:30:38 mailserver sm-mta[12364]: connect from slow-server.net [198.51.100.175]
+Jan 15 20:00:08 mailserver sm-mta[12365]: connect from hr-client.corp.local [192.168.1.50]
+Jan 15 20:30:53 mailserver sm-mta[12366]: connect from billing.internal [192.168.1.100]
+Jan 15 21:00:20 mailserver sm-mta[12367]: connect from localhost [127.0.0.1]
+Jan 15 21:30:16 mailserver sm-mta[12368]: connect from suspicious.spammer.net [45.33.32.156]
+Jan 15 22:00:43 mailserver sm-mta[12369]: connect from localhost [127.0.0.1]
+Jan 15 22:30:08 mailserver sm-mta[12370]: connect from marketing.service.com [104.18.32.7]
+Jan 15 23:00:31 mailserver sm-mta[12371]: connect from devops.internal [10.0.0.30]`;

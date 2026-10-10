@@ -7,7 +7,7 @@ export interface LogEntry {
   process: string;
   pid: string;
   queueId: string;
-  type: 'from' | 'to' | 'stat' | 'warning' | 'error' | 'reject' | 'ruleset' | 'connect' | 'disconnect' | 'other';
+  type: 'from' | 'to' | 'stat' | 'warning' | 'error' | 'reject' | 'ruleset' | 'connect' | 'disconnect' | 'dkim' | 'other';
   from?: string;
   to?: string;
   status?: string;
@@ -19,6 +19,16 @@ export interface LogEntry {
   size?: number;
   msgId?: string;
   raw: string;
+  // IP fields
+  sourceIp?: string;
+  sourceHost?: string;
+  destIp?: string;
+  destHost?: string;
+  // DKIM fields
+  dkimResult?: 'pass' | 'fail' | 'neutral' | 'temperror' | 'permerror' | 'none';
+  dkimDomain?: string;
+  dkimSelector?: string;
+  dkimDetail?: string;
 }
 
 export interface AnalysisResult {
@@ -43,6 +53,24 @@ export interface AnalysisResult {
   sizeDistribution: { range: string; count: number }[];
   queueStats: { pending: number; delivered: number; bounced: number; deferred: number };
   messageFlow: { time: string; sent: number; delivered: number; bounced: number }[];
+  // DKIM analysis
+  dkimStats: {
+    total: number;
+    pass: number;
+    fail: number;
+    neutral: number;
+    temperror: number;
+    permerror: number;
+    none: number;
+    passRate: number;
+  };
+  dkimByDomain: { domain: string; pass: number; fail: number; total: number; passRate: number }[];
+  dkimFailures: LogEntry[];
+  // IP analysis
+  sourceIpStats: { ip: string; count: number; success: number; fail: number; host?: string }[];
+  destIpStats: { ip: string; count: number; success: number; fail: number; host?: string }[];
+  sourceIpGeo: { ip: string; count: number; type: string }[];
+  suspiciousIps: { ip: string; count: number; reasons: string[] }[];
 }
 
 export function parseSendmailLog(logText: string): AnalysisResult {
@@ -87,6 +115,12 @@ function parseLine(line: string, index: number): LogEntry | null {
     raw: line,
   };
 
+  // Extract IP addresses from various patterns
+  extractIPs(entry, content, message);
+
+  // Parse DKIM related entries
+  parseDKIM(entry, content, message);
+
   // Parse from
   const fromMatch = content.match(/^from=<([^>]*)>/i);
   if (fromMatch || content.match(/^from=/i)) {
@@ -122,7 +156,15 @@ function parseLine(line: string, index: number): LogEntry | null {
     
     // Parse relay
     const relayMatch = content.match(/relay=([^,]+)/);
-    if (relayMatch) entry.relay = relayMatch[1].trim();
+    if (relayMatch) {
+      entry.relay = relayMatch[1].trim();
+      // Extract destination IP from relay field
+      const relayIpMatch = entry.relay.match(/\[([0-9.]+)\]/);
+      if (relayIpMatch) {
+        entry.destIp = relayIpMatch[1];
+        entry.destHost = entry.relay.split('[')[0].trim();
+      }
+    }
     
     // Parse stat
     const statMatch = content.match(/stat=([^\s,]+)/);
@@ -154,16 +196,27 @@ function parseLine(line: string, index: number): LogEntry | null {
     entry.status = content;
   }
 
-  // Parse connect
+  // Parse connect - extract source IP
   if (content.match(/^connect from/i)) {
     entry.type = 'connect';
     entry.relay = content.replace(/^connect from\s*/i, '');
+    // Extract source IP from connect line
+    const connectIpMatch = content.match(/\[([0-9.]+)\]/);
+    if (connectIpMatch) {
+      entry.sourceIp = connectIpMatch[1];
+      entry.sourceHost = content.replace(/^connect from\s*/i, '').split('[')[0].trim();
+    }
   }
 
   // Parse disconnect
   if (content.match(/^disconnect from/i)) {
     entry.type = 'disconnect';
     entry.relay = content.replace(/^disconnect from\s*/i, '');
+    const disconnectIpMatch = content.match(/\[([0-9.]+)\]/);
+    if (disconnectIpMatch) {
+      entry.sourceIp = disconnectIpMatch[1];
+      entry.sourceHost = content.replace(/^disconnect from\s*/i, '').split('[')[0].trim();
+    }
   }
 
   // Parse ruleset
@@ -186,6 +239,99 @@ function parseLine(line: string, index: number): LogEntry | null {
   return entry;
 }
 
+function extractIPs(entry: LogEntry, content: string, fullMessage: string) {
+  // Extract source IP from "relay=" in from lines (incoming mail)
+  const fromRelayMatch = content.match(/relay=([^\s,\[]+)\s*\[([0-9.]+)\]/);
+  if (fromRelayMatch && entry.type === 'from') {
+    entry.sourceIp = fromRelayMatch[2];
+    entry.sourceHost = fromRelayMatch[1];
+  }
+
+  // Extract from "connect from" pattern
+  const connectMatch = fullMessage.match(/connect from\s+(\S+)\s*\[([0-9.]+)\]/);
+  if (connectMatch) {
+    entry.sourceIp = connectMatch[2];
+    entry.sourceHost = connectMatch[1];
+  }
+
+  // Extract destination IP from relay in to lines
+  const toRelayMatch = content.match(/relay=([^\s,\[]+)\s*\[([0-9.]+)\]/);
+  if (toRelayMatch && (entry.type === 'to' || entry.type === 'warning' || entry.type === 'error')) {
+    entry.destIp = toRelayMatch[2];
+    entry.destHost = toRelayMatch[1];
+  }
+}
+
+function parseDKIM(entry: LogEntry, content: string, fullMessage: string) {
+  // Various DKIM log patterns from different sendmail/OpenDKIM configurations
+  
+  // Pattern 1: OpenDKIM style
+  // "DKIM-Signature field added" or "DKIM verification"
+  const dkimVerifyMatch = content.match(/DKIM.*?verification.*?(pass|fail|neutral|temperror|permerror|none)/i);
+  if (dkimVerifyMatch) {
+    entry.type = 'dkim';
+    entry.dkimResult = dkimVerifyMatch[1].toLowerCase() as LogEntry['dkimResult'];
+  }
+
+  // Pattern 2: opendkim log format
+  // "s=selector d=domain ..."
+  const dkimSelectorMatch = content.match(/[Dd]kim.*?s(?:elector)?=(\S+)/i);
+  if (dkimSelectorMatch) {
+    entry.dkimSelector = dkimSelectorMatch[1];
+  }
+
+  const dkimDomainMatch = content.match(/[Dd]kim.*?d(?:omain)?=(\S+)/i);
+  if (dkimDomainMatch) {
+    entry.dkimDomain = dkimDomainMatch[1].replace(/[;,]$/, '');
+  }
+
+  // Pattern 3: sendmail milter DKIM result
+  // "DKIM-Signature: ... result=pass"
+  const dkimResultMatch = content.match(/DKIM.*?(?:result|status)\s*[=:]\s*(pass|fail|neutral|temperror|permerror|none)/i);
+  if (dkimResultMatch) {
+    entry.type = 'dkim';
+    entry.dkimResult = dkimResultMatch[1].toLowerCase() as LogEntry['dkimResult'];
+  }
+
+  // Pattern 4: "DKIM: PASS" or "DKIM: FAIL"
+  const dkimSimpleMatch = content.match(/DKIM[:\s]+(PASS|FAIL|NEUTRAL|TEMPERROR|PERMERROR|NONE)/i);
+  if (dkimSimpleMatch) {
+    entry.type = 'dkim';
+    entry.dkimResult = dkimSimpleMatch[1].toLowerCase() as LogEntry['dkimResult'];
+  }
+
+  // Pattern 5: OpenDKIM specific log lines
+  // "message not signed" or "signature verified"
+  if (content.match(/DKIM.*signature verified/i)) {
+    entry.type = 'dkim';
+    entry.dkimResult = 'pass';
+  }
+  if (content.match(/DKIM.*signature.*(?:failed|error|bad)/i)) {
+    entry.type = 'dkim';
+    entry.dkimResult = 'fail';
+  }
+
+  // Pattern 6: "added DKIM-Signature" (outgoing signing)
+  if (content.match(/added DKIM-Signature/i) || content.match(/DKIM-Signature field added/i)) {
+    entry.type = 'dkim';
+    entry.dkimResult = 'pass';
+    entry.dkimDetail = '签名已添加 (出站签名)';
+  }
+
+  // Extract domain from DKIM entries
+  if (entry.type === 'dkim' && !entry.dkimDomain) {
+    const domainInDkim = content.match(/d=([a-zA-Z0-9.-]+)/i);
+    if (domainInDkim) {
+      entry.dkimDomain = domainInDkim[1];
+    }
+  }
+
+  // Extract detail
+  if (entry.type === 'dkim') {
+    entry.dkimDetail = content.substring(0, 200);
+  }
+}
+
 function parseTimestamp(str: string): Date {
   const currentYear = new Date().getFullYear();
   const dateStr = `${currentYear} ${str}`;
@@ -194,11 +340,9 @@ function parseTimestamp(str: string): Date {
 }
 
 function extractStatusCode(status: string): string {
-  // Extract DSN code like 2.0.0, 5.1.1, etc.
   const dsnMatch = status.match(/(\d\.\d+\.\d+)/);
   if (dsnMatch) return dsnMatch[1];
   
-  // Map common status strings to codes
   if (status.match(/Sent/i)) return '2.0.0';
   if (status.match(/Deferred/i)) return '4.0.0';
   if (status.match(/Bounced/i)) return '5.0.0';
@@ -256,7 +400,6 @@ function analyzeEntries(entries: LogEntry[]): AnalysisResult {
     }
     senderMap.get(addr)!.count++;
     
-    // Find corresponding to entries
     const relatedTo = toEntries.filter(t => t.queueId === fromEntry.queueId);
     relatedTo.forEach(t => {
       if (t.status && (t.status.match(/Sent/i) || t.status.match(/2\.\d+\.\d+/))) {
@@ -395,6 +538,115 @@ function analyzeEntries(entries: LogEntry[]): AnalysisResult {
     .map(([time, data]) => ({ time, ...data }))
     .sort((a, b) => a.time.localeCompare(b.time));
 
+  // === DKIM Analysis ===
+  const dkimEntries = entries.filter(e => e.type === 'dkim');
+  const dkimStats = {
+    total: dkimEntries.length,
+    pass: dkimEntries.filter(e => e.dkimResult === 'pass').length,
+    fail: dkimEntries.filter(e => e.dkimResult === 'fail').length,
+    neutral: dkimEntries.filter(e => e.dkimResult === 'neutral').length,
+    temperror: dkimEntries.filter(e => e.dkimResult === 'temperror').length,
+    permerror: dkimEntries.filter(e => e.dkimResult === 'permerror').length,
+    none: dkimEntries.filter(e => e.dkimResult === 'none').length,
+    passRate: dkimEntries.length > 0 ? (dkimEntries.filter(e => e.dkimResult === 'pass').length / dkimEntries.length) * 100 : 0,
+  };
+
+  // DKIM by domain
+  const dkimDomainMap = new Map<string, { pass: number; fail: number; total: number }>();
+  dkimEntries.forEach(e => {
+    const domain = e.dkimDomain || 'unknown';
+    if (!dkimDomainMap.has(domain)) {
+      dkimDomainMap.set(domain, { pass: 0, fail: 0, total: 0 });
+    }
+    dkimDomainMap.get(domain)!.total++;
+    if (e.dkimResult === 'pass') dkimDomainMap.get(domain)!.pass++;
+    if (e.dkimResult === 'fail') dkimDomainMap.get(domain)!.fail++;
+  });
+  const dkimByDomain = Array.from(dkimDomainMap.entries())
+    .map(([domain, data]) => ({ domain, ...data, passRate: data.total > 0 ? (data.pass / data.total) * 100 : 0 }))
+    .sort((a, b) => b.total - a.total);
+
+  const dkimFailures = dkimEntries.filter(e => e.dkimResult === 'fail' || e.dkimResult === 'permerror');
+
+  // === IP Analysis ===
+  // Source IP stats (incoming connections)
+  const sourceIpMap = new Map<string, { count: number; success: number; fail: number; host?: string }>();
+  entries.forEach(e => {
+    if (e.sourceIp) {
+      if (!sourceIpMap.has(e.sourceIp)) {
+        sourceIpMap.set(e.sourceIp, { count: 0, success: 0, fail: 0, host: e.sourceHost });
+      }
+      sourceIpMap.get(e.sourceIp)!.count++;
+      if (e.sourceHost) sourceIpMap.get(e.sourceIp)!.host = e.sourceHost;
+    }
+  });
+  // Also count success/fail per source IP from related entries
+  fromEntries.forEach(fromEntry => {
+    if (fromEntry.sourceIp) {
+      const relatedTo = toEntries.filter(t => t.queueId === fromEntry.queueId);
+      relatedTo.forEach(t => {
+        const ipData = sourceIpMap.get(fromEntry.sourceIp!);
+        if (ipData) {
+          if (t.status && (t.status.match(/Sent/i) || t.status.match(/2\.\d+\.\d+/))) {
+            ipData.success++;
+          } else if (t.status && (t.status.match(/Bounced/i) || t.status.match(/5\.\d+\.\d+/))) {
+            ipData.fail++;
+          }
+        }
+      });
+    }
+  });
+  const sourceIpStats = Array.from(sourceIpMap.entries())
+    .map(([ip, data]) => ({ ip, ...data }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 30);
+
+  // Destination IP stats (outgoing deliveries)
+  const destIpMap = new Map<string, { count: number; success: number; fail: number; host?: string }>();
+  toEntries.forEach(e => {
+    if (e.destIp) {
+      if (!destIpMap.has(e.destIp)) {
+        destIpMap.set(e.destIp, { count: 0, success: 0, fail: 0, host: e.destHost });
+      }
+      destIpMap.get(e.destIp)!.count++;
+      if (e.destHost) destIpMap.get(e.destIp)!.host = e.destHost;
+      if (e.status && (e.status.match(/Sent/i) || e.status.match(/2\.\d+\.\d+/))) {
+        destIpMap.get(e.destIp)!.success++;
+      } else if (e.status && (e.status.match(/Bounced/i) || e.status.match(/5\.\d+\.\d+/))) {
+        destIpMap.get(e.destIp)!.fail++;
+      }
+    }
+  });
+  const destIpStats = Array.from(destIpMap.entries())
+    .map(([ip, data]) => ({ ip, ...data }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 30);
+
+  // Source IP classification (internal vs external)
+  const sourceIpGeo = Array.from(sourceIpMap.entries())
+    .map(([ip, data]) => ({
+      ip,
+      count: data.count,
+      type: isPrivateIP(ip) ? '内网' : '外网',
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Suspicious IPs (high failure rate or high volume)
+  const suspiciousIps: { ip: string; count: number; reasons: string[] }[] = [];
+  sourceIpStats.forEach(ip => {
+    const reasons: string[] = [];
+    const total = ip.success + ip.fail;
+    if (total > 0 && (ip.fail / total) > 0.5 && ip.fail >= 3) {
+      reasons.push(`高失败率 (${((ip.fail / total) * 100).toFixed(0)}%)`);
+    }
+    if (ip.count > 20) {
+      reasons.push(`高频连接 (${ip.count}次)`);
+    }
+    if (reasons.length > 0) {
+      suspiciousIps.push({ ip: ip.ip, count: ip.count, reasons });
+    }
+  });
+
   return {
     entries,
     totalMessages: fromEntries.length,
@@ -422,7 +674,28 @@ function analyzeEntries(entries: LogEntry[]): AnalysisResult {
       deferred,
     },
     messageFlow,
+    dkimStats,
+    dkimByDomain,
+    dkimFailures,
+    sourceIpStats,
+    destIpStats,
+    sourceIpGeo,
+    suspiciousIps,
   };
+}
+
+function isPrivateIP(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4) return false;
+  // 10.0.0.0/8
+  if (parts[0] === 10) return true;
+  // 172.16.0.0/12
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  // 192.168.0.0/16
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  // 127.0.0.0/8
+  if (parts[0] === 127) return true;
+  return false;
 }
 
 function categorizeError(status: string): string {
