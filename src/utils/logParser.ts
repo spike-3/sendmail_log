@@ -87,22 +87,49 @@ export function parseSendmailLog(logText: string): AnalysisResult {
 }
 
 function parseLine(line: string, index: number): LogEntry | null {
-  // Sendmail log format:
-  // Mon DD HH:MM:SS hostname sendmail[PID]: QUEUEID: field=value, field=value, ...
-  // or: Mon DD HH:MM:SS hostname sm-mta[PID]: QUEUEID: field=value, ...
+  // Support multiple log formats:
+  // 1. ISO 8601: 2026-10-02T00:00:00.314430+08:00 hostname sm-mta[PID]: ...
+  // 2. Syslog: Mon DD HH:MM:SS hostname sendmail[PID]: QUEUEID: ...
   
-  const syslogPattern = /^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+?)\[(\d+)\]:\s+(.*)$/;
-  const match = line.match(syslogPattern);
+  let timestampStr: string;
+  let hostname: string;
+  let process: string;
+  let pid: string;
+  let message: string;
   
-  if (!match) return null;
+  // Try ISO 8601 format first
+  const isoPattern = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2}|Z)?)\s+(\S+)\s+(\S+?)\[(\d+)\]:\s+(.*)$/;
+  let match = line.match(isoPattern);
   
-  const [, timestampStr, hostname, process, pid, message] = match;
+  if (match) {
+    [, timestampStr, hostname, process, pid, message] = match;
+  } else {
+    // Try syslog format
+    const syslogPattern = /^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+?)\[(\d+)\]:\s+(.*)$/;
+    match = line.match(syslogPattern);
+    
+    if (!match) return null;
+    
+    [, timestampStr, hostname, process, pid, message] = match;
+  }
+  
   const timestamp = parseTimestamp(timestampStr);
   
-  // Extract queue ID
-  const queueIdMatch = message.match(/^([A-Za-z0-9]+):\s*(.*)$/);
-  const queueId = queueIdMatch ? queueIdMatch[1] : '';
-  const content = queueIdMatch ? queueIdMatch[2] : message;
+  // Extract queue ID - handle lines with or without queue ID
+  // Queue IDs are typically alphanumeric and followed by colon
+  // But some lines like STARTTLS, ruleset don't have queue IDs
+  const queueIdMatch = message.match(/^([A-Za-z0-9]{6,}):?\s*(.*)$/);
+  let queueId = '';
+  let content = message;
+  
+  if (queueIdMatch) {
+    // Check if it looks like a real queue ID (not a keyword)
+    const potentialId = queueIdMatch[1];
+    if (!potentialId.match(/^(STARTTLS|ruleset|to=|from=|stat=|reject=)/i)) {
+      queueId = potentialId;
+      content = queueIdMatch[2];
+    }
+  }
   
   const entry: LogEntry = {
     id: `${index}`,
@@ -223,6 +250,69 @@ function parseLine(line: string, index: number): LogEntry | null {
   if (content.match(/^ruleset=/i)) {
     entry.type = 'ruleset';
     entry.status = content;
+    
+    // Extract TLS-related info from ruleset
+    const tlsMatch = content.match(/ruleset=tls_server.*relay=([^,]+)/i);
+    if (tlsMatch) {
+      entry.relay = tlsMatch[1].trim();
+      entry.sourceHost = tlsMatch[1].trim();
+    }
+    
+    // Check if it's a TLS rejection
+    if (content.match(/reject=/i)) {
+      entry.type = 'reject';
+      const rejectMatch = content.match(/reject=(\d+\.\d+\.\d+)\s*(.*)/i);
+      if (rejectMatch) {
+        entry.status = `TLS rejected: ${rejectMatch[1]} ${rejectMatch[2]}`;
+        entry.statusCode = rejectMatch[1];
+      }
+    }
+  }
+  
+  // Parse STARTTLS entries
+  if (content.match(/^STARTTLS=/i) || message.match(/^STARTTLS=/i)) {
+    entry.type = 'warning';
+    entry.status = content || message;
+    
+    // Extract STARTTLS details
+    const starttlsMatch = (content || message).match(/STARTTLS=(\w+),\s*(.*)/i);
+    if (starttlsMatch) {
+      const direction = starttlsMatch[1];
+      const details = starttlsMatch[2];
+      entry.status = `STARTTLS ${direction}: ${details}`;
+      
+      // Extract error reason
+      const reasonMatch = details.match(/reason=([^,]+)/i);
+      if (reasonMatch) {
+        entry.status += ` (原因: ${reasonMatch[1]})`;
+      }
+    }
+  }
+  
+  // Parse reply= field in to entries (newer sendmail format)
+  if (entry.type === 'to' || entry.type === 'warning' || entry.type === 'error') {
+    const replyMatch = content.match(/reply=(\d{3})\s+(\d\.\d+\.\d+)\s*(.*)/i);
+    if (replyMatch) {
+      const replyCode = replyMatch[1];
+      const dsnCode = replyMatch[2];
+      const replyMsg = replyMatch[3];
+      
+      if (!entry.statusCode) {
+        entry.statusCode = dsnCode;
+      }
+      
+      // If stat field doesn't have detailed info, use reply info
+      if (!entry.status || entry.status === 'Sent') {
+        entry.status = `${replyCode} ${dsnCode} ${replyMsg}`.trim();
+      }
+      
+      // Determine entry type based on reply code
+      if (replyCode.startsWith('5')) {
+        entry.type = 'error';
+      } else if (replyCode.startsWith('4')) {
+        entry.type = 'warning';
+      }
+    }
   }
 
   // Determine error type for to entries
@@ -333,6 +423,15 @@ function parseDKIM(entry: LogEntry, content: string, fullMessage: string) {
 }
 
 function parseTimestamp(str: string): Date {
+  // Try ISO 8601 format first (2026-10-02T00:00:00.314430+08:00)
+  if (str.match(/^\d{4}-\d{2}-\d{2}T/)) {
+    const date = new Date(str);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+  
+  // Fall back to syslog format (Jan 15 08:01:23)
   const currentYear = new Date().getFullYear();
   const dateStr = `${currentYear} ${str}`;
   const date = new Date(dateStr);
@@ -699,19 +798,21 @@ function isPrivateIP(ip: string): boolean {
 }
 
 function categorizeError(status: string): string {
-  if (status.match(/user unknown|unknown user|no such user/i)) return '用户不存在';
+  if (status.match(/user unknown|user unknow|unknown user|no such user/i)) return '用户不存在';
   if (status.match(/mailbox full|quota|over quota/i)) return '邮箱已满';
   if (status.match(/connection refused|connection reset/i)) return '连接被拒绝';
   if (status.match(/timeout|timed out/i)) return '连接超时';
   if (status.match(/dns|name server|host not found|no route/i)) return 'DNS解析失败';
-  if (status.match(/relay denied|relay not permitted|access denied/i)) return '中继被拒绝';
+  if (status.match(/relay denied|relay not permitted|access denied|recipient address rejected/i)) return '收件人地址被拒绝';
+  if (status.match(/tls.*handshake|starttls.*failed|tls.*error|unsupported protocol/i)) return 'TLS/SSL握手失败';
+  if (status.match(/certificate|ssl|encryption/i)) return 'TLS/SSL证书错误';
   if (status.match(/deferred|tempfail|try again/i)) return '延迟投递';
   if (status.match(/spam|rejected|blocked|blacklist/i)) return '被标记为垃圾邮件';
-  if (status.match(/certificate|tls|ssl|encryption/i)) return 'TLS/SSL错误';
   if (status.match(/authentication|auth failed/i)) return '认证失败';
   if (status.match(/message too large|size limit/i)) return '邮件过大';
+  if (status.match(/5\.4\.1|5\.7\.1/i)) return '访问被拒绝(5.4.1/5.7.1)';
   if (status.match(/550|551|552|553|554/)) return '收件人拒绝(5xx)';
-  if (status.match(/421|450|451|452/)) return '临时失败(4xx)';
+  if (status.match(/421|450|451|452|4\.7\.0/i)) return '临时失败(4xx)';
   return '其他错误';
 }
 
