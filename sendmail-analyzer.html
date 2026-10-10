@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sendmail 日志分析工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+        
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area h2 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        .upload-area p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+        
+        .feature-card {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e0e5ff;
+        }
+        
+        .feature-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .feature-card p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+        
+        .results.show {
+            display: block;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        .chart-container {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-container h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .bar-chart {
+            display: flex;
+            align-items: end;
+            gap: 8px;
+            height: 200px;
+            padding: 20px 0;
+        }
+        
+        .bar {
+            flex: 1;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            transition: all 0.3s;
+            min-height: 20px;
+        }
+        
+        .bar:hover {
+            opacity: 0.8;
+            transform: translateY(-5px);
+        }
+        
+        .bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #666;
+            white-space: nowrap;
+        }
+        
+        .bar-value {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e5ff;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e5ff;
+        }
+        
+        tr:hover {
+            background: #f8f9ff;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background: #f8f9ff;
+            border: 1px solid #e0e5ff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            background: #e8ebff;
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .info-box h4 {
+            color: #1976D2;
+            margin-bottom: 10px;
+        }
+        
+        .info-box p {
+            color: #555;
+            line-height: 1.6;
+        }
+        
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e5ff;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .upload-area {
+                padding: 40px 20px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📧 Sendmail 日志分析工具</h1>
+            <p>全面的邮件服务器日志解析与分析</p>
+        </div>
+        
+        <div class="content">
+            <div id="uploadSection">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <h2>上传 Sendmail 日志文件</h2>
+                    <p>拖放日志文件到此处，或点击选择文件</p>
+                    <p style="font-size: 13px; color: #999;">支持标准 syslog 格式的 sendmail 日志（/var/log/maillog）</p>
+                    <div style="margin-top: 20px;">
+                        <button class="btn" onclick="document.getElementById('fileInput').click()">选择文件</button>
+                        <button class="btn btn-secondary" onclick="loadSampleData()">加载示例数据</button>
+                    </div>
+                    <input type="file" id="fileInput" accept=".log,.txt,.maillog" style="display: none;" onchange="handleFileUpload(event)">
+                </div>
+                
+                <div class="info-box">
+                    <h4>💡 使用说明</h4>
+                    <p>
+                        <strong>如何获取日志文件：</strong><br>
+                        • CentOS/RHEL: <code>tail -1000 /var/log/maillog > maillog.log</code><br>
+                        • Ubuntu/Debian: <code>tail -1000 /var/log/mail.log > maillog.log</code><br>
+                        • 提取特定日期: <code>grep "Jan 15" /var/log/maillog > jan15.log</code>
+                    </p>
+                </div>
+                
+                <div class="features">
+                    <div class="feature-card">
+                        <h3>📊 多维度分析</h3>
+                        <p>发件人、收件人、错误类型、延迟分布等全方位分析</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🕐 时间分布</h3>
+                        <p>按小时/天统计邮件流量，发现异常模式</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🛡️ DKIM 分析</h3>
+                        <p>分析 DKIM 签名验证结果，按域名统计通过率</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🌐 IP 分析</h3>
+                        <p>源IP/目标IP统计、内网外网分类、可疑IP检测</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="results" id="resultsSection">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="color: #333;">分析结果</h2>
+                    <button class="btn btn-secondary" onclick="resetAnalysis()">重新上传</button>
+                </div>
+                
+                <div class="tabs">
+                    <div class="tab active" onclick="switchTab('overview')">总览</div>
+                    <div class="tab" onclick="switchTab('hourly')">时间分布</div>
+                    <div class="tab" onclick="switchTab('senders')">发件人</div>
+                    <div class="tab" onclick="switchTab('recipients')">收件人</div>
+                    <div class="tab" onclick="switchTab('errors')">错误分析</div>
+                </div>
+                
+                <div class="tab-content active" id="overviewTab">
+                    <div class="stats-grid" id="statsGrid"></div>
+                    
+                    <div class="chart-container">
+                        <h3>投递状态分布</h3>
+                        <div id="statusChart"></div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="hourlyTab">
+                    <div class="chart-container">
+                        <h3>24小时邮件发送分布</h3>
+                        <div class="bar-chart" id="hourlyChart"></div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="sendersTab">
+                    <div class="chart-container">
+                        <h3>发件人排行</h3>
+                        <div class="table-container">
+                            <table id="sendersTable">
+                                <thead>
+                                    <tr>
+                                        <th>排名</th>
+                                        <th>发件人</th>
+                                        <th>总计</th>
+                                        <th>成功</th>
+                                        <th>失败</th>
+                                        <th>成功率</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="recipientsTab">
+                    <div class="chart-container">
+                        <h3>收件域名排行</h3>
+                        <div class="table-container">
+                            <table id="recipientsTable">
+                                <thead>
+                                    <tr>
+                                        <th>排名</th>
+                                        <th>域名</th>
+                                        <th>总计</th>
+                                        <th>成功</th>
+                                        <th>失败</th>
+                                        <th>成功率</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="errorsTab">
+                    <div class="chart-container">
+                        <h3>错误类型分布</h3>
+                        <div class="table-container">
+                            <table id="errorsTable">
+                                <thead>
+                                    <tr>
+                                        <th>错误类型</th>
+                                        <th>次数</th>
+                                        <th>占比</th>
+                                        <th>严重程度</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let analysisData = null;
+        
+        // 文件上传处理
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    analyzeLog(text);
+                };
+                reader.readAsText(file);
+            }
+        }
+        
+        // 拖放处理
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    analyzeLog(e.target.result);
+                };
+                reader.readAsText(file);
+            }
+        });
+        
+        // 加载示例数据
+        function loadSampleData() {
+            const sampleLog = `Jan 15 08:01:23 mailserver sendmail[12345]: ABC12345: from=<admin@example.com>, size=4521, class=0, nrcpts=1, msgid=<202401150801.abc@example.com>, proto=ESMTP, daemon=MTA, relay=localhost [127.0.0.1]
+Jan 15 08:01:24 mailserver sendmail[12346]: ABC12345: to=<user1@gmail.com>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, pri=124521, relay=gmail-smtp-in.l.google.com. [142.250.27.26], dsn=2.0.0, stat=Sent (OK 1705305684)
+Jan 15 08:05:12 mailserver sendmail[12347]: DEF23456: from=<newsletter@example.com>, size=15234, class=0, nrcpts=3, msgid=<202401150805.def@example.com>, proto=ESMTP, daemon=MTA, relay=localhost [127.0.0.1]
+Jan 15 08:05:13 mailserver sendmail[12348]: DEF23456: to=<subscriber1@yahoo.com>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, pri=135234, relay=mta5.am0.yahoodns.net [98.137.54.12], dsn=2.0.0, stat=Sent (ok dir delivery)
+Jan 15 08:05:14 mailserver sendmail[12349]: DEF23456: to=<subscriber2@hotmail.com>, delay=00:00:02, xdelay=00:00:02, mailer=esmtp, pri=135234, relay=hotmail-com.olc.protection.outlook.com [104.47.42.33], dsn=2.0.0, stat=Sent
+Jan 15 08:15:30 mailserver sendmail[12351]: GHI34567: from=<noreply@shop.example.com>, size=8923, class=0, nrcpts=1, msgid=<202401150815.ghi@example.com>, proto=ESMTP, daemon=MTA, relay=localhost [127.0.0.1]
+Jan 15 08:15:32 mailserver sendmail[12352]: GHI34567: to=<customer1@qq.com>, delay=00:00:02, xdelay=00:00:02, mailer=esmtp, pri=128923, relay=mx2.qq.com [43.129.34.56], dsn=5.1.1, stat=Bounced (user unknown)
+Jan 15 09:01:45 mailserver sendmail[12353]: JKL45678: from=<admin@example.com>, size=3200, class=0, nrcpts=1, msgid=<202401150901.jkl@example.com>, proto=ESMTP, daemon=MTA, relay=localhost [127.0.0.1]
+Jan 15 09:01:46 mailserver sendmail[12354]: JKL45678: to=<partner@company.org>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, pri=123200, relay=mail.company.org [203.0.113.50], dsn=2.0.0, stat=Sent (Message accepted)
+Jan 15 10:00:11 mailserver sendmail[12358]: PQR67890: from=<alerts@monitoring.example.com>, size=1024, class=0, nrcpts=1, msgid=<202401151000.pqr@example.com>, proto=ESMTP, daemon=MTA, relay=localhost [127.0.0.1]
+Jan 15 10:00:12 mailserver sendmail[12359]: PQR67890: to=<ops-team@gmail.com>, delay=00:00:01, xdelay=00:00:01, mailer=esmtp, pri=121024, relay=gmail-smtp-in.l.google.com. [142.250.27.26], dsn=2.0.0, stat=Sent (OK)`;
+            
+            analyzeLog(sampleLog);
+        }
+        
+        // 分析日志
+        function analyzeLog(logText) {
+            const lines = logText.split('\n').filter(line => line.trim());
+            const entries = [];
+            
+            lines.forEach((line, index) => {
+                const entry = parseLine(line, index);
+                if (entry) entries.push(entry);
+            });
+            
+            analysisData = analyzeEntries(entries);
+            displayResults();
+        }
+        
+        // 解析单行日志
+        function parseLine(line, index) {
+            const syslogPattern = /^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+?)\[(\d+)\]:\s+(.*)$/;
+            const match = line.match(syslogPattern);
+            
+            if (!match) return null;
+            
+            const [, timestampStr, hostname, process, pid, message] = match;
+            const timestamp = new Date();
+            
+            const queueIdMatch = message.match(/^([A-Za-z0-9]+):\s*(.*)$/);
+            const queueId = queueIdMatch ? queueIdMatch[1] : '';
+            const content = queueIdMatch ? queueIdMatch[2] : message;
+            
+            const entry = {
+                id: index,
+                timestamp,
+                hostname,
+                process,
+                pid,
+                queueId,
+                type: 'other',
+                raw: line,
+            };
+            
+            // 解析 from
+            const fromMatch = content.match(/^from=<([^>]*)>/i);
+            if (fromMatch) {
+                entry.type = 'from';
+                entry.from = fromMatch[1];
+                const sizeMatch = content.match(/size=(\d+)/);
+                if (sizeMatch) entry.size = parseInt(sizeMatch[1]);
+            }
+            
+            // 解析 to
+            const toMatch = content.match(/^to=<([^>]*)>/i);
+            if (toMatch) {
+                entry.type = 'to';
+                entry.to = toMatch[1];
+                const statMatch = content.match(/stat=([^\s,]+)/);
+                if (statMatch) entry.status = statMatch[1];
+            }
+            
+            return entry;
+        }
+        
+        // 分析条目
+        function analyzeEntries(entries) {
+            const fromEntries = entries.filter(e => e.type === 'from');
+            const toEntries = entries.filter(e => e.type === 'to');
+            
+            const successful = toEntries.filter(e => e.status && e.status.match(/Sent/i)).length;
+            const bounced = toEntries.filter(e => e.status && e.status.match(/Bounced/i)).length;
+            
+            // 小时分布
+            const hourlyDistribution = Array(24).fill(0);
+            fromEntries.forEach(e => {
+                const hour = e.timestamp.getHours();
+                hourlyDistribution[hour]++;
+            });
+            
+            // 发件人统计
+            const senderMap = new Map();
+            fromEntries.forEach(e => {
+                const addr = e.from || 'unknown';
+                if (!senderMap.has(addr)) {
+                    senderMap.set(addr, { count: 0, success: 0, fail: 0 });
+                }
+                senderMap.get(addr).count++;
+            });
+            
+            const topSenders = Array.from(senderMap.entries())
+                .map(([address, data]) => ({ address, ...data }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 10);
+            
+            // 收件人域名统计
+            const domainMap = new Map();
+            toEntries.forEach(e => {
+                if (e.to) {
+                    const domain = e.to.includes('@') ? e.to.split('@')[1] : e.to;
+                    if (!domainMap.has(domain)) {
+                        domainMap.set(domain, { count: 0, success: 0, fail: 0 });
+                    }
+                    domainMap.get(domain).count++;
+                    if (e.status && e.status.match(/Sent/i)) {
+                        domainMap.get(domain).success++;
+                    } else if (e.status && e.status.match(/Bounced/i)) {
+                        domainMap.get(domain).fail++;
+                    }
+                }
+            });
+            
+            const topRecipients = Array.from(domainMap.entries())
+                .map(([domain, data]) => ({ domain, ...data }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 10);
+            
+            // 错误类型
+            const errorMap = new Map();
+            toEntries.forEach(e => {
+                if (e.status && !e.status.match(/Sent/i)) {
+                    const errorType = categorizeError(e.status);
+                    errorMap.set(errorType, (errorMap.get(errorType) || 0) + 1);
+                }
+            });
+            
+            const totalErrors = Array.from(errorMap.values()).reduce((a, b) => a + b, 0);
+            const errorTypes = Array.from(errorMap.entries())
+                .map(([type, count]) => ({ type, count, percentage: totalErrors > 0 ? (count / totalErrors) * 100 : 0 }))
+                .sort((a, b) => b.count - a.count);
+            
+            return {
+                entries,
+                totalMessages: fromEntries.length,
+                successfulDeliveries: successful,
+                failedDeliveries: bounced,
+                hourlyDistribution,
+                topSenders,
+                topRecipients,
+                errorTypes,
+            };
+        }
+        
+        function categorizeError(status) {
+            if (status.match(/user unknown|unknown user/i)) return '用户不存在';
+            if (status.match(/mailbox full|quota/i)) return '邮箱已满';
+            if (status.match(/connection refused|timeout/i)) return '连接问题';
+            if (status.match(/dns|host not found/i)) return 'DNS解析失败';
+            if (status.match(/relay denied/i)) return '中继被拒绝';
+            return '其他错误';
+        }
+        
+        // 显示结果
+        function displayResults() {
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('resultsSection').classList.add('show');
+            
+            // 统计卡片
+            const statsGrid = document.getElementById('statsGrid');
+            const successRate = analysisData.totalMessages > 0 
+                ? ((analysisData.successfulDeliveries / analysisData.totalMessages) * 100).toFixed(1) 
+                : '0';
+            
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <h3>总邮件数</h3>
+                    <div class="value">${analysisData.totalMessages}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>成功投递</h3>
+                    <div class="value">${analysisData.successfulDeliveries}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>投递失败</h3>
+                    <div class="value">${analysisData.failedDeliveries}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>成功率</h3>
+                    <div class="value">${successRate}%</div>
+                </div>
+            `;
+            
+            // 小时分布图
+            const hourlyChart = document.getElementById('hourlyChart');
+            const maxCount = Math.max(...analysisData.hourlyDistribution);
+            hourlyChart.innerHTML = analysisData.hourlyDistribution.map((count, hour) => {
+                const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                return `
+                    <div class="bar" style="height: ${height}%">
+                        <div class="bar-value">${count}</div>
+                        <div class="bar-label">${hour}:00</div>
+                    </div>
+                `;
+            }).join('');
+            
+            // 发件人表格
+            const sendersTable = document.getElementById('sendersTable').querySelector('tbody');
+            sendersTable.innerHTML = analysisData.topSenders.map((sender, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>${sender.address}</td>
+                    <td>${sender.count}</td>
+                    <td>${sender.success}</td>
+                    <td>${sender.fail}</td>
+                    <td>${sender.count > 0 ? ((sender.success / sender.count) * 100).toFixed(1) : 0}%</td>
+                </tr>
+            `).join('');
+            
+            // 收件人表格
+            const recipientsTable = document.getElementById('recipientsTable').querySelector('tbody');
+            recipientsTable.innerHTML = analysisData.topRecipients.map((recipient, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td>${recipient.domain}</td>
+                    <td>${recipient.count}</td>
+                    <td>${recipient.success}</td>
+                    <td>${recipient.fail}</td>
+                    <td>${recipient.count > 0 ? ((recipient.success / recipient.count) * 100).toFixed(1) : 0}%</td>
+                </tr>
+            `).join('');
+            
+            // 错误表格
+            const errorsTable = document.getElementById('errorsTable').querySelector('tbody');
+            errorsTable.innerHTML = analysisData.errorTypes.map(error => `
+                <tr>
+                    <td>${error.type}</td>
+                    <td>${error.count}</td>
+                    <td>${error.percentage.toFixed(1)}%</td>
+                    <td><span class="status-badge status-warning">一般</span></td>
+                </tr>
+            `).join('');
+        }
+        
+        // 切换标签页
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+        }
+        
+        // 重置分析
+        function resetAnalysis() {
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('resultsSection').classList.remove('show');
+            document.getElementById('fileInput').value = '';
+            analysisData = null;
+        }
+    </script>
+</body>
+</html>
