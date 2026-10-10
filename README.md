@@ -2,162 +2,120 @@
 
 一个全面的 Sendmail 邮件服务器日志分析工具，提供多维度可视化分析。
 
-## 功能特性
+## 🚀 快速开始
 
-- 📊 **总览面板** - 邮件总量、成功率、投递状态分布
-- 🕐 **时间分布** - 24小时/每日趋势分析
-- 👤 **发件人分析** - 发件人排行与成功率统计
-- 📧 **收件人分析** - 目标域名分布与投递分析
-- ⚠️ **错误分析** - 错误类型分类与 DSN 状态码分析
-- ⏱️ **延迟分析** - 延迟分布、P50/P90/P99 百分位统计
-- 🔗 **中继路由** - 中继服务器与 Mailer 统计
-- 📈 **消息流** - 发送/投递/退回趋势
-- 🛡️ **DKIM 分析** - DKIM 签名验证结果分析
-- 🌐 **IP 分析** - 源IP/目标IP 统计与可疑 IP 检测
-- 📋 **原始日志** - 日志搜索与过滤
-- 📖 **使用帮助** - 详细的使用指南
+### 最简单的方法（推荐）
 
-## 快速开始
+项目已经构建完成，您可以直接使用：
 
-### 方法一：直接使用构建后的文件（推荐）
+```bash
+# 方式1：直接打开文件
+# 进入 dist 目录，双击打开 index.html
 
-如果您只想使用工具，不需要修改代码：
+# 方式2：启动本地服务器（推荐）
+npm run preview
+# 然后访问 http://localhost:4173
+```
 
-1. 确保已经运行过 `npm run build`
-2. 打开 `dist/index.html` 文件即可使用
-3. 或者将 `dist` 目录部署到任何 Web 服务器
+### 使用 Docker（最简单部署）
 
-### 方法二：从源代码运行
+```bash
+# 使用 docker-compose
+docker-compose up -d
 
-#### 环境要求
+# 访问 http://localhost:8080
+```
 
-- Node.js 16+ 
-- npm 或 yarn
-
-#### 安装步骤
+### 从源代码构建
 
 ```bash
 # 1. 安装依赖
 npm install
 
-# 2. 启动开发服务器（用于开发）
-npm run dev
-
-# 3. 构建生产版本
+# 2. 构建项目
 npm run build
 
-# 4. 预览构建结果
+# 3. 运行
 npm run preview
 ```
 
-#### 使用工具
+## 📖 使用工具
 
-1. 打开浏览器访问 `http://localhost:5173`（开发模式）或打开 `dist/index.html`
-2. 点击"选择文件"上传 Sendmail 日志文件
-3. 或点击"加载示例数据"查看功能演示
-4. 通过顶部标签页切换不同分析维度
-5. 点击"导出报告"下载 JSON 格式的分析结果
+1. 打开工具界面
+2. 上传 Sendmail 日志文件（或加载示例数据）
+3. 通过标签页切换分析维度：
+   - 总览、时间分布、发件人、收件人
+   - 错误分析、延迟分析、中继路由
+   - DKIM 分析、IP 分析、消息流
+4. 导出分析报告
 
-## 支持的日志格式
-
-工具支持标准 syslog 格式的 Sendmail 日志：
-
-```
-Jan 15 08:01:23 mailserver sendmail[12345]: ABC12345: from=<user@example.com>, size=4521, ...
-Jan 15 08:01:24 mailserver sendmail[12346]: ABC12345: to=<recipient@gmail.com>, delay=00:00:01, ...
-Jan 15 08:01:20 mailserver sm-mta[12300]: ABC12345: DKIM: PASS d=example.com s=mail
-Jan 15 08:01:22 mailserver sm-mta[12340]: connect from host.example.com [203.0.113.55]
-```
-
-## 获取日志文件
+## 📥 获取日志文件
 
 ```bash
-# 查看最近的邮件日志
-tail -1000 /var/log/maillog
+# CentOS/RHEL
+tail -1000 /var/log/maillog > maillog.log
 
-# 过滤 sendmail 相关日志
-grep sendmail /var/log/maillog > sendmail-only.log
+# Ubuntu/Debian
+tail -1000 /var/log/mail.log > maillog.log
 
-# 按日期过滤
+# 提取特定日期
 grep "Jan 15" /var/log/maillog > jan15.log
-
-# 过滤 DKIM 相关
-grep -i dkim /var/log/maillog > dkim.log
 ```
 
-## 部署
+## 📁 文件说明
 
-### 静态文件部署
+- `dist/` - **构建好的文件，可以直接使用**
+- `src/` - 源代码
+- `start.bat` / `start.sh` - 启动脚本
+- `Dockerfile` - Docker 配置
+- `docker-compose.yml` - Docker Compose 配置
 
-构建后的 `dist` 目录可以直接部署到任何静态文件服务器：
+## 🌐 部署到服务器
 
-- Nginx
-- Apache
-- GitHub Pages
-- Netlify
-- Vercel
-
-### Docker 部署（可选）
-
-创建 `Dockerfile`：
-
-```dockerfile
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-```
-
-构建和运行：
+### Nginx
 
 ```bash
-docker build -t sendmail-log-analyzer .
-docker run -p 8080:80 sendmail-log-analyzer
+# 将 dist 目录复制到 nginx 目录
+cp -r dist/* /usr/share/nginx/html/
 ```
 
-## 技术栈
+### Apache
 
-- React 18
-- TypeScript
+```bash
+# 将 dist 目录复制到 apache 目录
+cp -r dist/* /var/www/html/
+```
+
+### Docker
+
+```bash
+docker-compose up -d
+```
+
+## ❓ 常见问题
+
+**Q: 为什么不能直接打开使用？**  
+A: 这是前端项目，需要构建。构建后的文件在 `dist` 目录，可以直接使用。
+
+**Q: npm install 很慢？**  
+A: 使用国内镜像：`npm config set registry https://registry.npmmirror.com`
+
+**Q: 可以离线使用吗？**  
+A: 可以！构建后的 `dist` 目录可以完全离线使用。
+
+## 📚 详细文档
+
+- [使用指南](使用指南.md) - 详细使用说明
+- [快速开始](快速开始.md) - 快速入门
+- [使用说明](使用说明.md) - 完整中文说明
+
+## 🛠️ 技术栈
+
+- React 18 + TypeScript
 - Vite
 - Tailwind CSS
-- Recharts（图表库）
-- Lucide React（图标库）
+- Recharts
 
-## 常见问题
-
-### Q: 为什么打开 index.html 没有反应？
-
-A: 请确保您打开的是 `dist/index.html`（构建后的文件），而不是源代码目录中的 `index.html`。
-
-### Q: 如何查看示例数据？
-
-A: 在上传页面点击"加载示例数据"按钮即可查看工具的完整功能。
-
-### Q: 日志文件太大怎么办？
-
-A: 建议先使用 grep 过滤出需要的日志片段，例如：
-```bash
-grep "Jan 15" /var/log/maillog > jan15.log
-```
-
-### Q: 支持哪些 DKIM 日志格式？
-
-A: 支持 OpenDKIM 和 sendmail milter 的标准日志格式，包括：
-- `DKIM: PASS/FAIL d=domain s=selector`
-- `DKIM verification result=...`
-- `added DKIM-Signature`
-
-## 许可证
+## 📄 许可证
 
 MIT License
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
